@@ -1,12 +1,11 @@
 # -*-coding:utf-8-*-
 import logging
 
-import numpy as np
 import torch
-from torch import nn
 
 
-class TrainModel(nn.Module):
+class TrainModel(object):
+
     def __init__(self, **kwargs):
         super().__init__()
         for k in kwargs:
@@ -27,20 +26,31 @@ class TrainModel(nn.Module):
         current_patience = 0
         for epoch in range(self.nb_epoch):
             train_loss, dev_loss = 0., 0.
-            self.model.train()
+            self.encoder.train()
+            self.ptr_model.train()
+            self.decoder_model.train()
             if self.lr_decay != 0.:
                 self.optimizer = self.decay_learning_rate(epoch, self.learning_rate)
             for i, feed_dict in enumerate(self.data_iter_train):
                 self.optimizer.zero_grad()
-                feed_tensor_dict = self._get_inputs(feed_dict, self.model.use_cuda)
-
-                labels = self.tensor_from_numpy(feed_dict['label'], 'long', self.model.use_cuda)
+                feed_tensor_dict = self._get_inputs(feed_dict, self.ptr_model.use_cuda)
+                segment = self.tensor_from_numpy(feed_dict["segment"], 'long', self.ptr_model.use_cuda)
+                tag = self.tensor_from_numpy(feed_dict['tag'], 'long', self.ptr_model.use_cuda)
+                # encoder
+                if self.encoder.rnn_unit_type == 'lstm':
+                    encoder_output, (encoder_hn, _) = self.encoder(feed_tensor_dict)  # encoder_state: (bs * L, H)
+                else:
+                    encoder_output, encoder_hn = self.encoder(feed_tensor_dict)  # encoder_state: (bs * L, H)
 
                 # mask
                 mask = feed_tensor_dict[str(self.feature_names[0])] > 0
-
-                logits = self.model(**feed_tensor_dict)
-                loss = self.model.loss(logits, mask, labels)
+                # ptr network
+                ptr_logits = self.ptr_model(feed_tensor_dict, encoder_output, encoder_hn)
+                ptr_loss = self.ptr_model.loss(ptr_logits, mask, segment)
+                # decoder network
+                tag_logits = self.decoder_model(feed_tensor_dict, segment, encoder_hn)
+                tag_loss = self.decoder_model.loss(tag_logits, tag)
+                loss = ptr_loss + tag_loss
                 train_loss += loss.item()
                 loss.backward()
                 self.optimizer.step()
@@ -53,17 +63,28 @@ class TrainModel(nn.Module):
                                                            self.data_iter_train.data_count))
 
             # 计算开发集loss
-            self.model.eval()
+            self.ptr_model.eval()
+            self.decoder_model.eval()
             # dev_labels_pred, dev_labels_gold = [], []
             for feed_dict in self.data_iter_dev:
                 feed_tensor_dict = self._get_inputs(feed_dict, self.model.use_cuda)
+                segment = self.tensor_from_numpy(feed_dict["segment"], 'long', self.ptr_model.use_cuda)
+                tag = self.tensor_from_numpy(feed_dict['tag'], 'long', self.ptr_model.use_cuda)
 
-                labels = self.tensor_from_numpy(feed_dict['label'], 'long', self.model.use_cuda)
-
-                logits = self.model(**feed_tensor_dict)
+                if self.encoder.rnn_unit_type == 'lstm':
+                    encoder_output, (encoder_hn, _) = self.encoder(feed_tensor_dict)  # encoder_state: (bs * L, H)
+                else:
+                    encoder_output, encoder_hn = self.encoder(feed_tensor_dict)  # encoder_state: (bs * L, H)
                 # mask
                 mask = feed_tensor_dict[str(self.feature_names[0])] > 0
-                loss = self.model.loss(logits, mask, labels)
+                # ptr network
+                ptr_logits = self.ptr_model(feed_tensor_dict, encoder_output, encoder_hn)
+                ptr_loss = self.ptr_model.loss(ptr_logits, mask, segment)
+                # decoder network
+                tag_logits = self.decoder_model(feed_tensor_dict, segment, encoder_hn)
+                tag_loss = self.decoder_model.loss(tag_logits, tag)
+                loss = ptr_loss + tag_loss
+
                 dev_loss += loss.item()
 
             logging.info('\ttrain loss: {0}, dev loss: {1}'.format(train_loss, dev_loss))
@@ -83,32 +104,6 @@ class TrainModel(nn.Module):
                     logging.info('finished training! (early stopping, max patience: {0})'.format(self.max_patience))
                     return
         logging.info('finished training!')
-
-    def predict(self, data_iter, has_label=True):
-        """预测
-        Args:
-            data_iter: 数据迭代器
-            has_label: bool, 是否带有label
-
-        Returns:
-            labels: list of int
-        """
-        labels_pred, labels_gold = [], []
-        for feed_dict in data_iter:
-            if has_label:
-                labels_gold_batch = np.array(feed_dict['label']).astype(np.int32).tolist()
-                labels_gold.extend(labels_gold_batch)
-            feed_tensor_dict = self._get_inputs(feed_dict, self.model.use_cuda)
-
-            logits = self.model(**feed_tensor_dict)
-            # mask
-            mask = feed_tensor_dict[str(self.feature_names[0])] > 0
-            actual_lens = torch.sum(feed_tensor_dict[self.feature_names[0]] > 0, dim=1).int()
-            labels_batch = self.model.predict(logits, actual_lens, mask)
-            labels_pred.extend(labels_batch)
-        if has_label:
-            return labels_gold, labels_pred
-        return labels_pred
 
     def decay_learning_rate(self, epoch, init_lr):
         """衰减学习率
@@ -144,7 +139,9 @@ class TrainModel(nn.Module):
         """保存模型
         """
         import os
-        torch.save(self.model.state_dict(), os.path.join(self.path_save_model, "sequence_model"))
+        torch.save(self.encoder.state_dict(), os.path.join(self.path_save_model, "encoder"))
+        torch.save(self.ptr_model.state_dict(), os.path.join(self.path_save_model, "pointer_network"))
+        torch.save(self.decoder_model.state_dict(), os.path.join(self.path_save_model, "decoder"))
 
     def reset_batch_size(self, batch_size):
         self.batch_size = batch_size

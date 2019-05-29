@@ -97,6 +97,7 @@ if __name__ == '__main__':
     token2id_dict = read_bin("../data/alphabet/token2id_dict.pkl")["word"]
     print("开始加载embedding：[%s]" % time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
     start = time.time()
-    vectors, dim = load_tencent_embed(os.path.join("..", Args.embedding_path), token2id_dict)
+    vectors, dim = load_tencent_embed(
+        "E:\\py workspace\\Tencent AILab ChineseEmbedding\\Tencent_AILab_ChineseEmbedding.txt", token2id_dict)
     print("处理数据结束：[%s], 费时：[%s]" % (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), time.time() - start))
     print("vector size:%i" % dim)

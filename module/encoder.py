@@ -1,9 +1,13 @@
 # -*-coding:utf-8-*-
 import torch.nn as nn
 
+from module.feature import WordFeature
+from util.static_utils import init_lstm_weight
+
 
 class Encoder(nn.Module):
-    def __init__(self, input_dim, num_rnn_units, num_layers, rnn_unit_type, dropout_rate, use_cuda, bi_flag=True):
+    def __init__(self, input_dim, num_rnn_units, num_layers, rnn_unit_type, feature_names, feature_size_dict,
+                 feature_dim_dict, require_grad_dict, pretrained_embed_dict, dropout_rate, use_cuda, bi_flag=True):
         super().__init__()
         self.input_dim = input_dim
         self.num_rnn_units = num_rnn_units
@@ -11,6 +15,18 @@ class Encoder(nn.Module):
         self.bi_flag = bi_flag
         self.run_unit_type = rnn_unit_type
         self.use_cuda = use_cuda
+
+        self.feature_names = feature_names
+        self.feature_size_dict = feature_size_dict
+        self.feature_dim_dict = feature_dim_dict
+        self.require_grad_dict = require_grad_dict
+        self.pretrained_embed_dict = pretrained_embed_dict
+
+        # word level feature layer
+        self.word_feature_layer = WordFeature(
+            feature_names=self.feature_names, feature_size_dict=self.feature_size_dict,
+            feature_dim_dict=self.feature_dim_dict, require_grad_dict=self.require_grad_dict,
+            pretrained_embed_dict=self.pretrained_embed_dict)
 
         self.dropout_rate = dropout_rate
         # feature dropout
@@ -23,12 +39,18 @@ class Encoder(nn.Module):
             self.rnn = nn.LSTM(self.input_dim, self.num_rnn_units, self.num_layers, bidirectional=self.bi_flag)
         elif self.rnn_unit_type == 'gru':
             self.rnn = nn.GRU(self.input_dim, self.num_rnn_units, self.num_layers, bidirectional=self.bi_flag)
-
+        init_lstm_weight(self.rnn, self.num_layers)
         # encoder dropout
         self.dropout_rnn = nn.Dropout(self.dropout_rate)
 
-    def forward(self, feats):
-        feats = self.dropout_feature(feats)
+    def forward(self, **feed_dict):
+        # word level feature
+        word_feed_dict = {}
+        for i, feature_name in enumerate(self.feature_names):
+            word_feed_dict[feature_name] = feed_dict[feature_name]
+        word_feature = self.word_feature_layer(**word_feed_dict)
+
+        feats = self.dropout_feature(word_feature)
         if self.rnn_unit_type == 'rnn' or self.rnn_unit_type == 'gru':
             output, hn = self.rnn(feats)
             output = output.transpose(1, 0).contiguous()  # [bs, max_len, rnn_units]
