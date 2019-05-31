@@ -70,7 +70,7 @@ def check_evidence_paragraph(document):
     evidence_start_pattern = r"(?:被告|原告){0,1}.*(?:提供|举示|出示){0,1}.*(?:质证|证据|举证)"
     anti_evidence_start_patter = r"审.*[《|》]?.*(?:规定|责任|义务)"
     evidence_end_pattern = r"(?:质证|证据|举证|调查).*(?:结束|完毕|不再进行)"
-    start,end = 0,None
+    start, end = 0, None
     for index, paragraph in enumerate(document):
         paragraph = "。".join(paragraph)
         if start == 0 \

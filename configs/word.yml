@@ -22,7 +22,7 @@ data_params:
 
   # 预训练特征向量路径, 按feature_names顺序设置, 没有预训练向量则设为null
   path_pretrain:
-    - ./data/resources/sgns.renmin.bigram-char
+    - E:\\py workspace\\sgns.renmin.bigram-char\\sgns.renmin.bigram-char
     - null
     - null
 
@@ -45,8 +45,8 @@ model_params:
   bi_flag: true
 
   # cnn parameters
-  conv_filter_sizes: [3]
-  conv_filter_nums: [30]
+  conv_filter_sizes: 3
+  conv_filter_nums: 30
 
   # pointer network
   weight_size: 512
@@ -70,5 +70,5 @@ model_params:
   deterministic: false
 
 word_norm: true  # word normalization
-max_len_limit: 500  # batch的长度上限(非max_len)
+max_len_limit: 250  # batch的长度上限(非max_len)
 all_in_memory: true  # 数据全部加载到内存

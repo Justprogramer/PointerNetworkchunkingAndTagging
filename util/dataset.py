@@ -100,7 +100,7 @@ class DataIter(object):
         self._max_len_limit = max_len_limit
         self._seed = seed
 
-        self._iter_count = math.ceil(self._data_count/float(self._batch_size))
+        self._iter_count = math.ceil(self._data_count / float(self._batch_size))
 
         # init data type
         self._data_type_dict = data_type_dict
@@ -139,6 +139,8 @@ class DataIter(object):
         # 生成数据
         batch_dict = dict()
         for data_name in self._data_names:
+            if data_name == "label":
+                continue
             dtype = self._data_type_dict[data_name]
             batch_dict[data_name] = np.zeros((batch_size, batch_max_len), dtype=dtype)
 
@@ -147,6 +149,7 @@ class DataIter(object):
                 len_item = len(item)
                 len_item = len_item if len_item <= batch_max_len else batch_max_len
                 batch_dict[data_name][i][:len_item] = item[:len_item]
+        batch_dict["label"] = self._data_object_dict["label"][start:end]
         return batch_dict
 
     @property

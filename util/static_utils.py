@@ -1,8 +1,10 @@
 # -*-coding:utf-8-*-
 
 
-def to_var(x):
+def to_var(x, use_cuda=True):
     from torch.autograd import Variable
+    if use_cuda:
+        return Variable(x).cuda()
     return Variable(x)
 
 

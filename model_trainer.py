@@ -33,14 +33,14 @@ class TrainModel(object):
                 self.optimizer = self.decay_learning_rate(epoch, self.learning_rate)
             for i, feed_dict in enumerate(self.data_iter_train):
                 self.optimizer.zero_grad()
-                feed_tensor_dict = self._get_inputs(feed_dict, self.ptr_model.use_cuda)
-                segment = self.tensor_from_numpy(feed_dict["segment"], 'long', self.ptr_model.use_cuda)
-                tag = self.tensor_from_numpy(feed_dict['tag'], 'long', self.ptr_model.use_cuda)
+                feed_tensor_dict = self._get_inputs(feed_dict, self.encoder.use_cuda)
+                segment = self.tensor_from_numpy(feed_dict["segment"], 'long', self.encoder.use_cuda)
+                label = self.stack_label_tensor(feed_dict['label'], 'long', self.encoder.use_cuda)
                 # encoder
                 if self.encoder.rnn_unit_type == 'lstm':
-                    encoder_output, (encoder_hn, _) = self.encoder(feed_tensor_dict)  # encoder_state: (bs * L, H)
+                    encoder_output, (encoder_hn, _) = self.encoder(**feed_tensor_dict)  # encoder_state: (bs * L, H)
                 else:
-                    encoder_output, encoder_hn = self.encoder(feed_tensor_dict)  # encoder_state: (bs * L, H)
+                    encoder_output, encoder_hn = self.encoder(**feed_tensor_dict)  # encoder_state: (bs * L, H)
 
                 # mask
                 mask = feed_tensor_dict[str(self.feature_names[0])] > 0
@@ -48,9 +48,9 @@ class TrainModel(object):
                 ptr_logits = self.ptr_model(feed_tensor_dict, encoder_output, encoder_hn)
                 ptr_loss = self.ptr_model.loss(ptr_logits, mask, segment)
                 # decoder network
-                tag_logits = self.decoder_model(feed_tensor_dict, segment, encoder_hn)
-                tag_loss = self.decoder_model.loss(tag_logits, tag)
-                loss = ptr_loss + tag_loss
+                label_logits = self.decoder_model(feed_tensor_dict, segment, encoder_hn)
+                label_loss = self.decoder_model.loss(label_logits, label)
+                loss = ptr_loss + label_loss
                 train_loss += loss.item()
                 loss.backward()
                 self.optimizer.step()
@@ -63,13 +63,14 @@ class TrainModel(object):
                                                            self.data_iter_train.data_count))
 
             # 计算开发集loss
+            self.encoder.eval()
             self.ptr_model.eval()
             self.decoder_model.eval()
             # dev_labels_pred, dev_labels_gold = [], []
             for feed_dict in self.data_iter_dev:
                 feed_tensor_dict = self._get_inputs(feed_dict, self.model.use_cuda)
                 segment = self.tensor_from_numpy(feed_dict["segment"], 'long', self.ptr_model.use_cuda)
-                tag = self.tensor_from_numpy(feed_dict['tag'], 'long', self.ptr_model.use_cuda)
+                label = self.stack_label_tensor(feed_dict['label'], 'long', self.ptr_model.use_cuda)
 
                 if self.encoder.rnn_unit_type == 'lstm':
                     encoder_output, (encoder_hn, _) = self.encoder(feed_tensor_dict)  # encoder_state: (bs * L, H)
@@ -81,9 +82,9 @@ class TrainModel(object):
                 ptr_logits = self.ptr_model(feed_tensor_dict, encoder_output, encoder_hn)
                 ptr_loss = self.ptr_model.loss(ptr_logits, mask, segment)
                 # decoder network
-                tag_logits = self.decoder_model(feed_tensor_dict, segment, encoder_hn)
-                tag_loss = self.decoder_model.loss(tag_logits, tag)
-                loss = ptr_loss + tag_loss
+                label_logits = self.decoder_model(feed_tensor_dict, segment, encoder_hn)
+                label_loss = self.decoder_model.loss(label_logits, label)
+                loss = ptr_loss + label_loss
 
                 dev_loss += loss.item()
 
@@ -134,6 +135,27 @@ class TrainModel(object):
         if use_cuda:
             data = data.cuda()
         return data
+
+    @staticmethod
+    def stack_label_tensor(list_data, dtype='long', use_cuda=True):
+        """将list转换为tensor
+        Args:
+            list_data: list
+            dtype: long or float
+            use_cuda: bool
+        """
+        import numpy as np
+        assert dtype in ('long', 'float')
+        data = []
+        for l in list_data:
+            data.extend(l)
+        if dtype == 'long':
+            data = torch.from_numpy(np.array(data)).long()
+        else:
+            data = torch.from_numpy(np.array(data)).float()
+        if use_cuda:
+            data = data.cuda()
+        return data.view(len(data), 1)
 
     def save_model(self):
         """保存模型

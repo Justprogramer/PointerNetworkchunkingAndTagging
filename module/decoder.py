@@ -8,25 +8,24 @@ from util.static_utils import init_cnn_weight, to_var
 
 
 class Decoder(nn.Module):
-    def __init__(self, encoder, input_dim, target_size, num_rnn_units, rnn_unit_type, dropout_rate,
-                 use_cuda, conv_filter_sizes, conv_filter_nums, feature_names, feature_size_dict, feature_dim_dict,
-                 require_grad_dict, pretrained_embed_dict, ):
+    def __init__(self, encoder, conv_filter_sizes, conv_filter_nums):
         super().__init__()
         self.encoder = encoder
-        self.input_dim = input_dim
-        self.target_size = target_size
-        self.num_rnn_units = num_rnn_units
-        self.rnn_unit_types = rnn_unit_type
-        self.dropout_rate = dropout_rate
-        self.use_cuda = use_cuda
+        self.input_dim = self.encoder.rnn_input_dim
+        self.num_rnn_units = self.encoder.num_rnn_units
+        self.rnn_unit_types = self.encoder.rnn_unit_type
+        self.dropout_rate = self.encoder.dropout_rate
+        self.use_cuda = self.encoder.use_cuda
         self.filter_sizes = conv_filter_sizes
         self.filter_nums = conv_filter_nums
 
-        self.feature_names = feature_names
-        self.feature_size_dict = feature_size_dict
-        self.feature_dim_dict = feature_dim_dict
-        self.require_grad_dict = require_grad_dict
-        self.pretrained_embed_dict = pretrained_embed_dict
+        self.feature_names = self.encoder.feature_names
+        self.feature_size_dict = self.encoder.feature_size_dict
+        self.feature_dim_dict = self.encoder.feature_dim_dict
+        self.require_grad_dict = self.encoder.require_grad_dict
+        self.pretrained_embed_dict = self.encoder.pretrained_embed_dict
+
+        self.target_size = self.feature_size_dict['label']
 
         self.loss = nn.CrossEntropyLoss(ignore_index=0, size_average=False)
         # word level feature layer
@@ -38,14 +37,14 @@ class Decoder(nn.Module):
         self.word_encoders_convs = nn.ModuleList([
             nn.Conv2d(in_channels=1, out_channels=self.filter_nums, kernel_size=(filter_size, self.input_dim))
             for filter_size in range(1, self.filter_sizes + 1)
-        ])
+        ]).cuda()
         for cnn_layer in self.word_encoders_convs:
             init_cnn_weight(cnn_layer)
 
         self.decoder_input_dim = self.num_rnn_units + self.input_dim + self.filter_sizes * self.filter_nums
         self.rnn_layer = nn.LSTMCell(self.decoder_input_dim, self.num_rnn_units, bias=False) \
             if self.rnn_unit_types == "lstm" else nn.GRUCell(self.decoder_input_dim, self.num_rnn_units, bias=False)
-        self.fc = nn.Linear(self.num_rnn_units, target_size, bias=False)
+        self.fc = nn.Linear(self.num_rnn_units, self.target_size, bias=False)
         self.softmax = f.log_softmax
 
     def conv_and_pool(self, x, conv):
@@ -54,11 +53,16 @@ class Decoder(nn.Module):
         return x.squeeze()
 
     def pointer_forward(self, word_feature, encoder_hidden, decoder_hidden, decoder_cell_state):
+        # todo 单个输入没考虑到，等待修复
         c_h = torch.mean(encoder_hidden, dim=0, keepdim=True).squeeze()
         input = word_feature.unsqueeze(0).unsqueeze(0)
-        c_x = [self.conv_and_pool(input, conv) for conv in self.word_encoders_convs]
-        c_x = torch.cat(c_x, 0)
-        input = input.squeeze()
+        input_length = input.size(1)
+        if input_length < self.filter_sizes:
+            c_x = self.conv_and_pool(input, self.word_encoders_convs[input_length - 1]).repeat(self.filter_sizes)
+        else:
+            c_x = [self.conv_and_pool(input, conv) for conv in self.word_encoders_convs]
+            c_x = torch.cat(c_x, 0)
+        input = input.squeeze().unsqueeze(0)
         c_w = torch.mean(input, dim=0, keepdim=True).squeeze()
         decoder_input = torch.cat([c_w, c_h, c_x], 0).unsqueeze(0)
         feats, cell_state = self.rnn_layer(decoder_input, (decoder_hidden, decoder_cell_state))
@@ -71,7 +75,7 @@ class Decoder(nn.Module):
         word_feature = self.word_feature_layer(**word_feed_dict)
 
         # Decoding states initialization(lstmCell)
-        decoder_hidden = to_var(torch.zeros([1, self.num_rnn_units]))
+        decoder_hidden = to_var(torch.zeros([1, self.num_rnn_units]), self.encoder.use_cuda)
         decoder_cell_state = encoder_hidden[-1]
         tag_list = []
         batch_size = word_feature.size(0)
@@ -91,11 +95,13 @@ class Decoder(nn.Module):
         seg_list = []
         start = 0
         for i, se in enumerate(segment):
+            if i == 0:
+                continue
             if se == 1:
                 seg_list.append((start, i))
                 start = i
-            if i == len(segment) and start != i:
-                seg_list.append((start, i))
+            if i == len(segment) - 1 and start != i:
+                seg_list.append((start, len(segment)))
         return seg_list
 
     def loss(self, logits, tags):

@@ -8,22 +8,20 @@ from util.static_utils import *
 
 
 class PointerNetwork(nn.Module):
-    def __init__(self, encoder, decoder, weight_size, word_emb_size, max_sentence_length,
-                 num_rnn_units, feature_names, feature_size_dict, feature_dim_dict, require_grad_dict,
-                 pretrained_embed_dict, bi_flag=True):
+    def __init__(self, encoder, decoder, weight_size, max_sentence_length, bi_flag=True):
         super(PointerNetwork, self).__init__()
-        self.encoder_hidden_size = num_rnn_units * 2 if bi_flag else num_rnn_units
+        self.encoder_hidden_size = encoder.num_rnn_units * 2 if encoder.bi_flag else encoder.num_rnn_units
         self.weight_size = weight_size
-        self.word_emb_size = word_emb_size
-        self.decoder_hidden_size = num_rnn_units
+        self.word_emb_size = encoder.rnn_input_dim
+        self.decoder_hidden_size = decoder.num_rnn_units
         self.encoder = encoder
         self.decoder = decoder
 
-        self.feature_names = feature_names
-        self.feature_size_dict = feature_size_dict
-        self.feature_dim_dict = feature_dim_dict
-        self.require_grad_dict = require_grad_dict
-        self.pretrained_embed_dict = pretrained_embed_dict
+        self.feature_names = encoder.feature_names
+        self.feature_size_dict = encoder.feature_size_dict
+        self.feature_dim_dict = encoder.feature_dim_dict
+        self.require_grad_dict = encoder.require_grad_dict
+        self.pretrained_embed_dict = encoder.pretrained_embed_dict
 
         # word level feature layer
         self.word_feature_layer = WordFeature(
@@ -64,15 +62,15 @@ class PointerNetwork(nn.Module):
             sentence_length = single_input.size(0)
             encoder_output = encoder_outputs[batch_size]
             # Decoding states initialization(lstmCell)
-            decoder_input = to_var(torch.zeros(1, self.word_emb_size))
-            decoder_hidden = to_var(torch.zeros([1, self.decoder_hidden_size]))
+            decoder_input = to_var(torch.zeros(1, self.word_emb_size), self.encoder.use_cuda)
+            decoder_hidden = to_var(torch.zeros([1, self.decoder_hidden_size]), self.encoder.use_cuda)
             decoder_cell_state = encoder_hn[-1]
 
             output = torch.zeros(sentence_length)
             last_bond, bond = 0, 0
             while bond < sentence_length:
                 if bond == 0:
-                    encoder_hn0 = to_var(torch.zeros(1, self.decoder_hidden_size))
+                    encoder_hn0 = to_var(torch.zeros(1, self.decoder_hidden_size), self.encoder.use_cuda)
                     decoder_hidden, decoder_cell_state, _ = self.decoder.pointer_forward(decoder_input, encoder_hn0,
                                                                                          decoder_hidden,
                                                                                          decoder_cell_state)
@@ -89,7 +87,8 @@ class PointerNetwork(nn.Module):
                 blend_sum = f.tanh(blend1 + blend2 + blend3 + blend4)
                 out1 = self.vt1(blend_sum).squeeze()  # (L-start)
                 out2 = self.vt2(
-                    self.chunk_length_embedding(to_var(torch.LongTensor([bond - last_bond])))).squeeze()  # 1-d
+                    self.chunk_length_embedding(
+                        to_var(torch.LongTensor([bond - last_bond]), self.encoder.use_cuda))).squeeze()  # 1-d
                 out = (out1 + out2).contiguous()
                 out = f.log_softmax(out, -1)
                 max_value, max_index = torch.max(out)

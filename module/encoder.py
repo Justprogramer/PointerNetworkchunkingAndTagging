@@ -6,14 +6,13 @@ from util.static_utils import init_lstm_weight
 
 
 class Encoder(nn.Module):
-    def __init__(self, input_dim, num_rnn_units, num_layers, rnn_unit_type, feature_names, feature_size_dict,
+    def __init__(self, num_rnn_units, num_layers, rnn_unit_type, feature_names, feature_size_dict,
                  feature_dim_dict, require_grad_dict, pretrained_embed_dict, dropout_rate, use_cuda, bi_flag=True):
         super().__init__()
-        self.input_dim = input_dim
         self.num_rnn_units = num_rnn_units
         self.num_layers = num_layers
         self.bi_flag = bi_flag
-        self.run_unit_type = rnn_unit_type
+        self.rnn_unit_type = rnn_unit_type
         self.use_cuda = use_cuda
 
         self.feature_names = feature_names
@@ -27,6 +26,9 @@ class Encoder(nn.Module):
             feature_names=self.feature_names, feature_size_dict=self.feature_size_dict,
             feature_dim_dict=self.feature_dim_dict, require_grad_dict=self.require_grad_dict,
             pretrained_embed_dict=self.pretrained_embed_dict)
+        self.rnn_input_dim = 0
+        for name in self.feature_names:
+            self.rnn_input_dim += self.feature_dim_dict[name]
 
         self.dropout_rate = dropout_rate
         # feature dropout
@@ -34,11 +36,11 @@ class Encoder(nn.Module):
 
         # encoder type
         if self.rnn_unit_type == 'rnn':
-            self.rnn = nn.RNN(self.input_dim, self.num_rnn_units, self.num_layers, bidirectional=self.bi_flag)
+            self.rnn = nn.RNN(self.rnn_input_dim, self.num_rnn_units, self.num_layers, bidirectional=self.bi_flag)
         elif self.rnn_unit_type == 'lstm':
-            self.rnn = nn.LSTM(self.input_dim, self.num_rnn_units, self.num_layers, bidirectional=self.bi_flag)
+            self.rnn = nn.LSTM(self.rnn_input_dim, self.num_rnn_units, self.num_layers, bidirectional=self.bi_flag)
         elif self.rnn_unit_type == 'gru':
-            self.rnn = nn.GRU(self.input_dim, self.num_rnn_units, self.num_layers, bidirectional=self.bi_flag)
+            self.rnn = nn.GRU(self.rnn_input_dim, self.num_rnn_units, self.num_layers, bidirectional=self.bi_flag)
         init_lstm_weight(self.rnn, self.num_layers)
         # encoder dropout
         self.dropout_rnn = nn.Dropout(self.dropout_rate)

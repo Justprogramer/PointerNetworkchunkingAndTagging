@@ -110,24 +110,10 @@ class Inference(object):
             file_result.write('<doc end>\n')
         gold_label_all = self.label2id(gold_label_all)
         predict_label_all = self.label2id(predict_label_all)
-        target_names = ["B-E", "I-E", "B-T", "I-T", "B-C",
-                        "I-C", "B-O", "I-O", "B-A", "I-A", "O"]
+        target_names = ["E", "T", "C", "V", "A", "O"]
         file_result.write('\n<end>\n')
         file_result.write(classification_report(gold_label_all, predict_label_all, target_names=target_names))
         file_result.close()
-
-    def calculate(self, predict, gold, type):
-        tp, fn, tn, fp = 0, 0, 0, 0
-        for segment, t in predict:
-            if (segment, t) in gold and t == type:
-                tp += 1
-            if (segment, t) in gold and t != type:
-                tn += 1
-            if (segment, t) not in gold and t == type:
-                fp += 1
-            if (segment, t) not in gold and t != type:
-                fn += 1
-        return tp, fn, tn, fp
 
     def id2label(self, label_ids_array):
         """将label ids转为label
