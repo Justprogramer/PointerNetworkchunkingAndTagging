@@ -77,16 +77,16 @@ class Inference(object):
                 feed_tensor_dict = self._get_inputs(feed_dict, self.encoder.use_cuda)
 
                 if self.encoder.rnn_unit_type == 'lstm':
-                    encoder_output, (encoder_hn, _) = self.encoder(feed_tensor_dict)  # encoder_state: (bs * L, H)
+                    encoder_output, (encoder_hn, _) = self.encoder(**feed_tensor_dict)  # encoder_state: (bs * L, H)
                 else:
-                    encoder_output, encoder_hn = self.encoder(feed_tensor_dict)  # encoder_state: (bs * L, H)
+                    encoder_output, encoder_hn = self.encoder(**feed_tensor_dict)  # encoder_state: (bs * L, H)
                     # mask
                 actual_lens = torch.sum(feed_tensor_dict[self.encoder.feature_names[0]] > 0, dim=1).int()
                 # ptr network
-                ptr_logits = self.ptr_model(feed_tensor_dict, encoder_output, encoder_hn)
+                ptr_logits = self.ptr_model(feed_tensor_dict, encoder_output)
                 segments = self.ptr_model.predict(ptr_logits, actual_lens)
                 # decoder network
-                tag_logits = self.decoder(feed_tensor_dict, segments, encoder_hn)
+                tag_logits =  self.decoder(feed_tensor_dict, segments, encoder_output)
                 tag_ids_batch = self.decoder.predict(tag_logits, actual_lens, segments)
                 labels_batch = self.id2label(tag_ids_batch)  # list(list(int))
 

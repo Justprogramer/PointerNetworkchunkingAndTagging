@@ -3,6 +3,9 @@ import logging
 
 import torch
 
+# 通过下面的方式进行简单配置输出方式与日志级别
+logging.basicConfig(filename='log.txt', level=logging.INFO)
+
 
 class TrainModel(object):
 
@@ -45,49 +48,46 @@ class TrainModel(object):
                 # mask
                 mask = feed_tensor_dict[str(self.feature_names[0])] > 0
                 # ptr network
-                ptr_logits = self.ptr_model(feed_tensor_dict, encoder_output, encoder_hn)
+                ptr_logits = self.ptr_model(feed_tensor_dict, encoder_output)
                 ptr_loss = self.ptr_model.loss(ptr_logits, mask, segment)
                 # decoder network
-                label_logits = self.decoder_model(feed_tensor_dict, segment, encoder_hn)
+                label_logits = self.decoder_model(feed_tensor_dict, segment, encoder_output)
                 label_loss = self.decoder_model.loss(label_logits, label)
                 loss = ptr_loss + label_loss
                 train_loss += loss.item()
                 loss.backward()
                 self.optimizer.step()
-
                 print('Epoch {0} / {1}: data {2} / {3}\r'.format(epoch + 1, self.nb_epoch,
                                                                  self.data_iter_train.iter_variable,
                                                                  self.data_iter_train.data_count))
             print(
                 'Epoch {0} / {1}: data {2} / {3}\n'.format(epoch + 1, self.nb_epoch, self.data_iter_train.data_count,
                                                            self.data_iter_train.data_count))
-
             # 计算开发集loss
             self.encoder.eval()
             self.ptr_model.eval()
             self.decoder_model.eval()
             # dev_labels_pred, dev_labels_gold = [], []
             for feed_dict in self.data_iter_dev:
-                feed_tensor_dict = self._get_inputs(feed_dict, self.model.use_cuda)
-                segment = self.tensor_from_numpy(feed_dict["segment"], 'long', self.ptr_model.use_cuda)
-                label = self.stack_label_tensor(feed_dict['label'], 'long', self.ptr_model.use_cuda)
+                feed_tensor_dict = self._get_inputs(feed_dict, self.encoder.use_cuda)
+                segment = self.tensor_from_numpy(feed_dict["segment"], 'long', self.encoder.use_cuda)
+                label = self.stack_label_tensor(feed_dict['label'], 'long', self.encoder.use_cuda)
 
                 if self.encoder.rnn_unit_type == 'lstm':
-                    encoder_output, (encoder_hn, _) = self.encoder(feed_tensor_dict)  # encoder_state: (bs * L, H)
+                    encoder_output, (encoder_hn, _) = self.encoder(**feed_tensor_dict)  # encoder_state: (bs * L, H)
                 else:
-                    encoder_output, encoder_hn = self.encoder(feed_tensor_dict)  # encoder_state: (bs * L, H)
+                    encoder_output, encoder_hn = self.encoder(**feed_tensor_dict)  # encoder_state: (bs * L, H)
                 # mask
                 mask = feed_tensor_dict[str(self.feature_names[0])] > 0
                 # ptr network
-                ptr_logits = self.ptr_model(feed_tensor_dict, encoder_output, encoder_hn)
+                ptr_logits = self.ptr_model(feed_tensor_dict, encoder_output)
                 ptr_loss = self.ptr_model.loss(ptr_logits, mask, segment)
                 # decoder network
-                label_logits = self.decoder_model(feed_tensor_dict, segment, encoder_hn)
+                label_logits = self.decoder_model(feed_tensor_dict, segment, encoder_output)
                 label_loss = self.decoder_model.loss(label_logits, label)
                 loss = ptr_loss + label_loss
 
                 dev_loss += loss.item()
-
             logging.info('\ttrain loss: {0}, dev loss: {1}'.format(train_loss, dev_loss))
 
             # 判断是否需要保存模型
@@ -155,7 +155,7 @@ class TrainModel(object):
             data = torch.from_numpy(np.array(data)).float()
         if use_cuda:
             data = data.cuda()
-        return data.view(len(data), 1)
+        return data
 
     def save_model(self):
         """保存模型

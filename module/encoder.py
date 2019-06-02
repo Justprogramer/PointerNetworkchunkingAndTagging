@@ -36,11 +36,14 @@ class Encoder(nn.Module):
 
         # encoder type
         if self.rnn_unit_type == 'rnn':
-            self.rnn = nn.RNN(self.rnn_input_dim, self.num_rnn_units, self.num_layers, bidirectional=self.bi_flag)
+            self.rnn = nn.RNN(self.rnn_input_dim, self.num_rnn_units, self.num_layers, bidirectional=self.bi_flag,
+                              batch_first=True)
         elif self.rnn_unit_type == 'lstm':
-            self.rnn = nn.LSTM(self.rnn_input_dim, self.num_rnn_units, self.num_layers, bidirectional=self.bi_flag)
+            self.rnn = nn.LSTM(self.rnn_input_dim, self.num_rnn_units, self.num_layers, bidirectional=self.bi_flag,
+                               batch_first=True)
         elif self.rnn_unit_type == 'gru':
-            self.rnn = nn.GRU(self.rnn_input_dim, self.num_rnn_units, self.num_layers, bidirectional=self.bi_flag)
+            self.rnn = nn.GRU(self.rnn_input_dim, self.num_rnn_units, self.num_layers, bidirectional=self.bi_flag,
+                              batch_first=True)
         init_lstm_weight(self.rnn, self.num_layers)
         # encoder dropout
         self.dropout_rnn = nn.Dropout(self.dropout_rate)
@@ -55,11 +58,11 @@ class Encoder(nn.Module):
         feats = self.dropout_feature(word_feature)
         if self.rnn_unit_type == 'rnn' or self.rnn_unit_type == 'gru':
             output, hn = self.rnn(feats)
-            output = output.transpose(1, 0).contiguous()  # [bs, max_len, rnn_units]
-            output = self.dropout_rnn(output.view(-1, output.size(-1)))
+            # output = output.transpose(1, 0).contiguous()  # [bs, max_len, rnn_units]
+            output = self.dropout_rnn(output)
             return output, hn
         elif self.rnn_unit_type == 'lstm':
             output, (hn, cn) = self.rnn(feats)
-            output = output.transpose(1, 0).contiguous()  # [bs, max_len, lstm_units]
-            output = self.dropout_rnn(output.view(-1, output.size(-1)))
+            # output = output.transpose(1, 0).contiguous()  # [bs, max_len, lstm_units]
+            output = self.dropout_rnn(output)
             return output, (hn, cn)

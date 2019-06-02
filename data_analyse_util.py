@@ -212,7 +212,7 @@ def create_data(evidence_paragraph_dict, type=None):
     for d in evidence_paragraph_dict:
         if d not in tag_dic:
             with codecs.open("log.txt", "a", "utf-8") as f:
-                f.write("文档《%s》没有对应的数据标签" % d)
+                f.write("文档《%s》没有对应的数据标签\n" % d)
             continue
         evidence_content = evidence_paragraph_dict[d]
         for sentence in evidence_content:
@@ -314,14 +314,14 @@ def load_data(data_path):
 
 def pre_process_raw_data(options):
     with codecs.open("log.txt", "a", "utf-8") as fp:
-        fp.write("开始处理数据：[%s]" % time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+        fp.write("开始处理数据：[%s]\n" % time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
     start = time.time()
     if options:
         analyse_data()
         save()
         dump_log()
     with codecs.open("log.txt", "a", "utf-8") as fp:
-        fp.write("处理数据结束：[%s], 费时：[%s]" % (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), time.time() - start))
+        fp.write("处理数据结束：[%s], 费时：[%s]\n" % (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), time.time() - start))
 
 
 if __name__ == '__main__':

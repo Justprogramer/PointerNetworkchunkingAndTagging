@@ -112,7 +112,7 @@ def pre_processing(configs):
 
     # 构建label alphabet, 从1开始编号
     token2id_dict = dict()
-    label2id_dict = {"E": 1, "T": 2, "C": 3, "V": 4, "A": 5, "O": 6}
+    label2id_dict = {"E": 1, "T": 2, "C": 3, "V": 4, "A": 5, "O": 0}
     token2id_dict['label'] = label2id_dict
     path_label2id_pkl = os.path.join(root_alphabet, 'label.pkl')
     if not is_file_exist(root_alphabet):
@@ -471,8 +471,8 @@ def main():
 
     # 判断是否需要预处理
     if opts.preprocess:
-        # pre_process_raw_data(True)
-        # pre_processing(configs)
+        pre_process_raw_data(True)
+        pre_processing(configs)
         print("pre process 结束，开始训练模型。。。。")
         # 训练
     if opts.train:  # train
